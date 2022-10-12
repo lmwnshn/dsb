@@ -1,7 +1,19 @@
+import argparse
 import simplejson as json
 import shutil
 import os
 import subprocess
+
+switch_prefix = "/"
+extension = ".exe"
+
+def _prefix(switch):
+	global switch_prefix
+	return switch_prefix + switch
+
+def _binary(filename):
+    global extension
+    return filename + extension
 
 def load_json(filename):
 	with open(filename, 'r') as f:
@@ -21,19 +33,25 @@ def get_query_template_files(dir, filenames):
 		return result
 
 def gen_gaussian_dist(exec_dir, options):
-	exec_path = os.path.join(exec_dir, 'distcomp.exe')
-	cmd = [exec_path, '/i', 'tpcds.dst', '/o', 'tpcds.idx', '/param_dist', 'normal', '/verbose']
+	exec_path = os.path.join(exec_dir, _binary('distcomp'))
+	cmd = [
+		exec_path,
+		_prefix('i'), 'tpcds.dst',
+		_prefix('o'), 'tpcds.idx',
+		_prefix('param_dist'), 'normal',
+		_prefix('verbose')
+	]
 	if 'param_sigma' in options:
-		cmd.append('/param_sigma')
+		cmd.append(_prefix('param_sigma'))
 		cmd.append(str(options['param_sigma']))
 	if 'param_center' in options:
-		cmd.append('/param_center')
+		cmd.append(_prefix('param_center'))
 		cmd.append(str(options['param_center']))
 	if 'rngseed' in options and options['rngseed'] is not None:
-		cmd.append('/rngseed')
+		cmd.append(_prefix('rngseed'))
 		cmd.append(str(options['rngseed']))
 	print(' '.join(cmd))
-	subprocess.run(cmd, shell=True, cwd = exec_dir)
+	subprocess.run(cmd, shell=False, cwd=exec_dir)
 
 def generate_queries(exec_dir, output_dir, tmp_dir, template_filename, dialect, options):
 	print('generate queries for template ' + template_filename + ' to ' + output_dir)
@@ -46,18 +64,23 @@ def generate_queries(exec_dir, output_dir, tmp_dir, template_filename, dialect, 
 	if not os.path.exists(query_dir):
 		os.makedirs(query_dir)
 
-	exec_path = os.path.join(exec_dir, 'dsqgen.exe')
-	cmd = [exec_path, '/output_dir', tmp_dir, '/streams', str(options['instance_count']),
-			'/directory', os.path.dirname(template_filename),
-			'/template', os.path.basename(template_filename), '/dialect', dialect]
+	exec_path = os.path.join(exec_dir, _binary('dsqgen'))
+	cmd = [
+		exec_path,
+		_prefix('output_dir'), tmp_dir,
+		_prefix('streams'), str(options['instance_count']),
+		_prefix('directory'), os.path.dirname(template_filename),
+		_prefix('template'), os.path.basename(template_filename),
+		_prefix('dialect'), dialect
+	]
 	if 'param_dist' in options:
-		cmd.append('/param_dist')
+		cmd.append(_prefix('param_dist'))
 		cmd.append(options['param_dist'])
 	if 'rngseed' in options:
-		cmd.append('/rngseed')
+		cmd.append(_prefix('rngseed'))
 		cmd.append(str(options['rngseed']))
 	print(' '.join(cmd))
-	subprocess.run(cmd, shell=True, cwd = exec_dir)
+	subprocess.run(cmd, shell=False, cwd=exec_dir)
 
 	# Rename the query instance files.
 	for i in range(options['instance_count']):
@@ -92,6 +115,31 @@ def generate_workload(workload_config):
 			generate_queries(exec_dir, dir, tmp_dir, query_template_file,
 										workload_config['dialect'], workload)
 
-workload_config_file = r'D:\scripts\workload_config.json'
-workload_config = load_json(workload_config_file)
-generate_workload(workload_config)
+
+def main():
+	parser = argparse.ArgumentParser()
+	parser.add_argument("--workload_config_file",
+		default=r"D:\scripts\workload_config.json",
+		help="Absolute path to workload config json."
+	)
+	parser.add_argument("--os",
+		default="windows",
+		help="OS to set conventions for switch prefixes and file extensions."
+	)
+	args = parser.parse_args()
+
+	global switch_prefix
+	global extension
+	if args.os == "windows":
+		switch_prefix = "/"
+		extension = ".exe"
+	elif args.os == "linux":
+		switch_prefix = "-"
+		extension = ""
+
+	workload_config = load_json(args.workload_config_file)
+	generate_workload(workload_config)
+
+if __name__ == "__main__":
+	main()
+
